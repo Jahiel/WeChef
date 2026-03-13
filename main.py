@@ -9,7 +9,8 @@ from urllib.parse import urlparse, urlunparse
 from datetime import datetime
 from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from pdf_generator import generate_pdf
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -428,7 +429,6 @@ body {
 </div>
 
 <div class="recipe-content-page">
-  <h3>{{ r.title }}</h3>
 
 <div class="ingredients">
   <h4>🧂 Ingrédients</h4>
@@ -448,7 +448,7 @@ body {
   <table style="width:100%; border-collapse:collapse;">
   {% for step in r.steps %}
     <tr style="border-bottom:1px solid #f0f0f0;">
-     <td style="width:30px; vertical-align:top; padding:8px 10px 8px 0; color:#667eea; font-weight:bold;">{{ loop.index }}.</td>
+     <td style="width:30px; vertical-align:top; padding:8px 10px 8px 0; color:#667eea; font-weight:bold;">{{ loop.index }}.</td> 
       <td style="vertical-align:top; padding:8px 0; line-height:1.7;">{{ step }}</td>
     </tr>
   {% endfor %}
@@ -466,44 +466,13 @@ body {
 @app.post("/export-pdf")
 def export_pdf(body: dict, db: Session = Depends(get_db)):
     recipe_ids = body.get("recipe_ids", [])
-    if not recipe_ids:
-        raise HTTPException(status_code=400, detail="Aucune recette sélectionnée")
-
     recipes = db.query(Recipe).filter(Recipe.id.in_(recipe_ids)).all()
-    if not recipes:
-        raise HTTPException(status_code=404, detail="Aucune recette trouvée")
-
-    recipes_data = [
-        {
-            "id": r.id,
-            "title": r.title,
-            "ingredients": json.loads(r.ingredients),
-            "steps": json.loads(r.steps),
-            "servings": r.servings,
-            "prep_time": r.prep_time,
-            "image_url": r.image_url,
-        }
-        for r in recipes
-    ]
-
-    template = Template(HTML_TEMPLATE)
-    html_content = template.render(
-        recipes=recipes_data,
-        recipe_count=len(recipes),
-        date=datetime.now().strftime("%d/%m/%Y"),
-    )
-
-    pdf_bytes = HTML(string=html_content).write_pdf()
-    pdf_path = "/tmp/cookbook.pdf"
-    with open(pdf_path, "wb") as f:
-        f.write(pdf_bytes)
-
-    return FileResponse(
-        pdf_path,
+    pdf_bytes = generate_pdf(recipes)
+    return Response(
+        content=pdf_bytes,
         media_type="application/pdf",
-        filename=f"Carnet_Recettes_{datetime.now().strftime('%Y%m%d')}.pdf",
+        headers={"Content-Disposition": "attachment; filename=carnet_recettes.pdf"}
     )
-
 # ─────────────────────────────────────────────
 # Détail + modification d'une recette
 # ─────────────────────────────────────────────
