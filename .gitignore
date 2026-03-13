@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.db
+
+# Environnement virtuel
+.venv/
+.env
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Temp
+tmp/
