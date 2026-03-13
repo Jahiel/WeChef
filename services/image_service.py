@@ -7,6 +7,7 @@ de lecture (notamment pour le listing des recettes).
 """
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -14,6 +15,8 @@ from typing import Optional
 
 import httpx
 from google import genai
+
+logger = logging.getLogger(__name__)
 
 UNSPLASH_KEY = os.environ.get("UNSPLASH_ACCESS_KEY")
 _HTTP_HEADERS = {"User-Agent": "WeChef/1.0"}
@@ -24,7 +27,10 @@ IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 async def _translate_title(client_gemini: genai.Client, title: str) -> str:
-    """Traduit un titre FR → EN via Gemini pour la recherche Unsplash."""
+    """Traduit un titre FR → EN via Gemini pour la recherche Unsplash.
+
+    En cas de quota épuisé, retourne le titre original (dégradation gracieuse).
+    """
     try:
         resp = client_gemini.models.generate_content(
             model="gemini-2.5-flash-lite",
@@ -34,19 +40,24 @@ async def _translate_title(client_gemini: genai.Client, title: str) -> str:
             ),
         )
         return resp.text.strip().strip('"').strip("'")
-    except Exception:
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "429" in msg or "resource_exhausted" in msg or "quota" in msg:
+            logger.warning("Quota Gemini atteint pour la traduction du titre — fallback titre FR: %s", title)
+            return title  # On cherche directement avec le titre français
+        logger.warning("Erreur traduction Gemini (non-quota): %s", exc)
         return title
 
 
 async def _save_image_from_bytes(content: bytes, content_type: str) -> str:
     """Sauvegarde des bytes image sur disque et retourne le chemin URL relatif."""
-    ext = content_type.split("/")[-1].split("+")[0]  # "jpeg", "png", "webp"...
+    ext = content_type.split("/")[-1].split("+")[0]
     if ext not in ("jpeg", "jpg", "png", "webp", "gif"):
         ext = "jpg"
     filename = f"{uuid.uuid4().hex}.{ext}"
     filepath = IMAGES_DIR / filename
     filepath.write_bytes(content)
-    return f"/static/images/{filename}"  # URL servie par FastAPI StaticFiles
+    return f"/static/images/{filename}"
 
 
 async def _fetch_unsplash(query: str) -> Optional[str]:
@@ -89,14 +100,20 @@ async def _fetch_picsum(title: str) -> Optional[str]:
 
 
 async def generate_image_for_recipe(client_gemini: genai.Client, title: str) -> Optional[str]:
-    """Point d'entrée : essaie Unsplash, puis Picsum en fallback.
+    """Point d'entrée : essaie Unsplash (avec traduction Gemini), puis Picsum en fallback.
 
+    La traduction Gemini est désormais résistante au quota (fallback titre FR).
     Retourne une URL relative (/static/images/xxx.jpg) ou None.
     """
     english_query = await _translate_title(client_gemini, title)
     image_path = await _fetch_unsplash(english_query)
     if image_path:
         return image_path
+    # Si Unsplash a échoué avec le titre EN, retenter avec le titre FR original
+    if english_query != title:
+        image_path = await _fetch_unsplash(title)
+        if image_path:
+            return image_path
     return await _fetch_picsum(title)
 
 

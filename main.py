@@ -32,7 +32,7 @@ from schemas import (
     TagAddRequest,
     TagResponse,
 )
-from services.extractor import extract_recipe_with_llm, fetch_video_metadata
+from services.extractor import extract_recipe_with_llm, fetch_video_metadata, QuotaExceededError
 from services.image_service import generate_image_for_recipe, delete_image_file, IMAGES_DIR
 from urllib.parse import urlparse, urlunparse
 
@@ -164,7 +164,7 @@ def delete_recipe(recipe_id: int, db: Session = Depends(get_db)) -> None:
     recipe = db.get(Recipe, recipe_id)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recette non trouvée")
-    delete_image_file(recipe.image_url)  # nettoyage fichier image
+    delete_image_file(recipe.image_url)
     db.delete(recipe)
     db.commit()
 
@@ -202,7 +202,7 @@ async def extract_recipe(body: ExtractRequest, db: Session = Depends(get_db)) ->
         raise HTTPException(status_code=409, detail="Recette déjà importée")
 
     try:
-        meta = await fetch_video_metadata(url)  # non-bloquant
+        meta = await fetch_video_metadata(url)
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -211,9 +211,17 @@ async def extract_recipe(body: ExtractRequest, db: Session = Depends(get_db)) ->
 
     try:
         recipe_data = extract_recipe_with_llm(client_gemini, description, video_title)
+    except QuotaExceededError as exc:
+        # Quota quotidien Gemini épuisé — on informe le client avec un 503
+        raise HTTPException(
+            status_code=503,
+            detail="Quota quotidien Google Gemini épuisé. Réessaie demain ou vérifie ton plan API.",
+            headers={"Retry-After": "86400"},
+        ) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Erreur LLM : {exc}") from exc
 
+    # L'image ne plante plus sur quota (dégradation gracieuse dans image_service)
     image_url = await generate_image_for_recipe(client_gemini, recipe_data.get("title", video_title))
 
     db_recipe = Recipe(
@@ -244,7 +252,7 @@ async def regenerate_image(recipe_id: int, db: Session = Depends(get_db)) -> dic
     recipe = db.get(Recipe, recipe_id)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recette non trouvée")
-    delete_image_file(recipe.image_url)  # supprime l'ancienne image
+    delete_image_file(recipe.image_url)
     image_url = await generate_image_for_recipe(client_gemini, recipe.title)
     if image_url:
         recipe.image_url = image_url
