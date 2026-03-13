@@ -26,7 +26,7 @@ from database import init_db, get_db
 
 load_dotenv()
 client_gemini = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-
+YT_DLP_PATH = os.getenv("YT_DLP_PATH", "/usr/bin/yt-dlp")
 app = FastAPI(title="WeChef Backend")
 
 app.add_middleware(
@@ -143,7 +143,7 @@ async def extract_recipe(body: dict, db: Session = Depends(get_db)):
 
     # Métadonnées via yt-dlp (sans télécharger la vidéo)
     result = subprocess.run(
-        ["yt-dlp", "--skip-download", "-j", url],
+        [YT_DLP_PATH, "--skip-download", "-j", url],
         capture_output=True,
         text=True,
         timeout=30

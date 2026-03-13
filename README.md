@@ -59,13 +59,20 @@ pip install "fastapi[standard]" uvicorn weasyprint httpx jinja2 \
             google-genai python-dotenv
 ```
 
-### 3. Variables d'environnement
+### 3. Vérifier yt-dlp
+
+```bash
+which yt-dlp  # Copie le chemin dans YT_DLP_PATH du .env
+```
+
+### 4. Variables d'environnement
 
 Crée le fichier `.env` à la racine :
 
 ```env
 GEMINI_API_KEY=ta_clé_google_ai_studio
 UNSPLASH_ACCESS_KEY=ta_clé_unsplash
+YT_DLP_PATH=Chemin absolu vers l'exécutable yt-dlp
 ```
 
 - **Gemini** : [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) — gratuit, 1000 req/jour
