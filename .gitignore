@@ -15,3 +15,12 @@ __pycache__/
 
 # Temp
 tmp/
+
+# Local databases
+recipes.db
+.recipes.db
+*.db-wal
+*.db-shm
+
+# Generated images
+static/images/
