@@ -528,6 +528,22 @@ async def regenerate_image(recipe_id: int, db: Session = Depends(get_db)):
 
     return {"image_url": image_url}
 
+@app.post("/recipes")
+def create_recipe(body: dict, db: Session = Depends(get_db)):
+    db_recipe = Recipe(
+        title=body.get("title", "Nouvelle recette")[:100],
+        ingredients=json.dumps(body.get("ingredients", []), ensure_ascii=False),
+        steps=json.dumps(body.get("steps", []), ensure_ascii=False),
+        servings=body.get("servings", 4),
+        prep_time=body.get("prep_time", None),
+        source_url=None,
+        image_url=None,
+    )
+    db.add(db_recipe)
+    db.commit()
+    db.refresh(db_recipe)
+    return {"id": db_recipe.id, "message": "Recette créée"}
+
 
 @app.put("/recipes/{recipe_id}")
 def update_recipe(recipe_id: int, body: dict, db: Session = Depends(get_db)):

@@ -197,6 +197,14 @@
                 autocomplete="off"
             >
             <button onclick="importRecipe()">Importer</button>
+	    <button onclick="openNewRecipe()" style="
+    padding:12px 24px;
+    background:linear-gradient(135deg, #43e97b, #38f9d7);
+    color:white; border:none; border-radius:8px;
+    font-size:1em; font-weight:600; cursor:pointer;
+">
+    ✏️ Nouvelle recette
+</button>
         </div>
         <div class="loading" id="importLoading">⏳ Extraction en cours...</div>
     </div>
@@ -502,6 +510,10 @@ function closeModal() {
     document.getElementById('modal-overlay').style.display = 'none';
     document.getElementById('recipe-modal').style.display = 'none';
     currentRecipeId = null;
+
+    // Remet le texte du bouton par défaut
+    const saveBtn = document.querySelector('#recipe-modal button[onclick="saveRecipe()"]');
+    if (saveBtn) saveBtn.textContent = '💾 Enregistrer';
 }
 
 // -------- Rendu ingrédients --------
@@ -605,35 +617,48 @@ function addStep() {
 
 // -------- Sauvegarder --------
 async function saveRecipe() {
-    if (!currentRecipeId) return;
-
     const btn = event.target;
     btn.disabled = true;
     btn.textContent = '⏳ Sauvegarde...';
 
-    try {
-        await fetch(`${API_BASE}/recipes/${currentRecipeId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                title: document.getElementById('edit-title').value,
-                servings: parseInt(document.getElementById('edit-servings').value),
-                prep_time: document.getElementById('edit-prep-time').value,
-                ingredients: currentIngredients,
-                steps: currentSteps,
-            })
-        });
+    const payload = {
+        title: document.getElementById('edit-title').value || 'Nouvelle recette',
+        servings: parseInt(document.getElementById('edit-servings').value) || 4,
+        prep_time: document.getElementById('edit-prep-time').value || null,
+        ingredients: currentIngredients.filter(i => i.name.trim() !== ''),
+        steps: currentSteps.filter(s => s.trim() !== ''),
+    };
 
-        showStatus('✓ Recette sauvegardée !', 'success');
+    try {
+        if (currentRecipeId) {
+            // Modification
+            await fetch(`${API_BASE}/recipes/${currentRecipeId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            showStatus('✓ Recette sauvegardée !', 'success');
+        } else {
+            // Création
+            await fetch(`${API_BASE}/recipes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            showStatus('✓ Recette créée !', 'success');
+        }
+
         closeModal();
         loadRecipes();
+
     } catch (err) {
         alert(`Erreur : ${err.message}`);
     } finally {
         btn.disabled = false;
-        btn.textContent = '💾 Enregistrer';
+        btn.textContent = currentRecipeId ? '💾 Enregistrer' : '✏️ Créer la recette';
     }
 }
+
 
 // -------- Upload image --------
 async function uploadImage(input) {
@@ -690,6 +715,34 @@ async function regenerateImage() {
         btn.disabled = false;
         btn.textContent = '🔄 Regénérer';
     }
+}
+
+function openNewRecipe() {
+    currentRecipeId = null;  // null = création, pas édition
+    currentIngredients = [];
+    currentSteps = [];
+
+    // Vide tous les champs
+    document.getElementById('modal-title-display').textContent = 'Nouvelle recette';
+    document.getElementById('edit-title').value = '';
+    document.getElementById('edit-servings').value = 4;
+    document.getElementById('edit-prep-time').value = '';
+
+    // Pas d'image
+    document.getElementById('modal-image').style.display = 'none';
+    document.getElementById('modal-no-image').style.display = 'flex';
+
+    // Un ingrédient et une étape vides pour démarrer
+    addIngredient();
+    addStep();
+
+    // Change le bouton Enregistrer en Créer
+    const saveBtn = document.querySelector('#recipe-modal button[onclick="saveRecipe()"]');
+    saveBtn.textContent = '✏️ Créer la recette';
+
+    // Affiche la modale
+    document.getElementById('modal-overlay').style.display = 'block';
+    document.getElementById('recipe-modal').style.display = 'block';
 }
 
 </script>
