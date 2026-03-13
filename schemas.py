@@ -1,7 +1,31 @@
 """Schémas Pydantic v2 centralisés pour WeChef."""
 from __future__ import annotations
+
+import re
 from typing import Optional, List
 from pydantic import BaseModel, Field, field_validator
+
+
+# ── Helper ────────────────────────────────────────────────────────────────────
+
+def _parse_prep_time(v) -> Optional[int]:
+    """Convertit n'importe quelle représentation de durée en entier de minutes.
+
+    Exemples: None → None, 30 → 30, '30 min' → 30, '1h30' → 90, '2 heures' → 120
+    Utile pour les recettes importées avant la migration du schéma (legacy data).
+    """
+    if v is None or v == "":
+        return None
+    if isinstance(v, int):
+        return max(v, 0)
+    s = str(v).strip().lower()
+    # Cas '1h30', '1h', '1 heure 30', '2 heures'
+    hm = re.match(r"(\d+)\s*h(?:eure)?s?\s*(\d*)", s)
+    if hm:
+        return int(hm.group(1)) * 60 + (int(hm.group(2)) if hm.group(2) else 0)
+    # Cas '30 min', '30min', '30'
+    m = re.match(r"(\d+)", s)
+    return int(m.group(1)) if m else None
 
 
 # ── Ingrédients ──────────────────────────────────────────────────────────────
@@ -21,7 +45,7 @@ class TagResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Recette ───────────────────────────────────────────────────────────────────
+# ── Recette ─────────────────────────────────────────────────────────────────
 
 class RecipeCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
@@ -31,6 +55,10 @@ class RecipeCreate(BaseModel):
     prep_time: Optional[int] = Field(default=None, ge=0, description="Durée en minutes")
     image_url: Optional[str] = None
 
+    @field_validator("prep_time", mode="before")
+    @classmethod
+    def normalize_prep_time(cls, v): return _parse_prep_time(v)
+
 
 class RecipeUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
@@ -39,6 +67,10 @@ class RecipeUpdate(BaseModel):
     servings: Optional[int] = Field(default=None, ge=1, le=100)
     prep_time: Optional[int] = Field(default=None, ge=0)
     image_url: Optional[str] = None
+
+    @field_validator("prep_time", mode="before")
+    @classmethod
+    def normalize_prep_time(cls, v): return _parse_prep_time(v)
 
 
 class RecipeResponse(BaseModel):
@@ -56,6 +88,10 @@ class RecipeResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @field_validator("prep_time", mode="before")
+    @classmethod
+    def normalize_prep_time(cls, v): return _parse_prep_time(v)
+
 
 class RecipeListItem(BaseModel):
     """Version allégée pour la liste (sans ingrédients/steps)."""
@@ -68,6 +104,10 @@ class RecipeListItem(BaseModel):
     image_url: Optional[str]
     created_at: str
 
+    @field_validator("prep_time", mode="before")
+    @classmethod
+    def normalize_prep_time(cls, v): return _parse_prep_time(v)
+
 
 # ── Requêtes ─────────────────────────────────────────────────────────────────
 
@@ -77,10 +117,10 @@ class ExtractRequest(BaseModel):
     @field_validator("url")
     @classmethod
     def must_be_supported_platform(cls, v: str) -> str:
-    	v = v.strip()
-    	if not any(domain in v for domain in ("tiktok.com", "instagram.com", "vm.tiktok.com")):
-    		raise ValueError("URL doit provenir de TikTok ou Instagram")
-    	return v
+        v = v.strip()
+        if not any(domain in v for domain in ("tiktok.com", "instagram.com", "vm.tiktok.com")):
+            raise ValueError("URL doit provenir de TikTok ou Instagram")
+        return v
 
 
 class TagAddRequest(BaseModel):
@@ -89,7 +129,7 @@ class TagAddRequest(BaseModel):
     @field_validator("tag")
     @classmethod
     def lowercase_strip(cls, v: str) -> str:
-    	return v.strip().lower()
+        return v.strip().lower()
 
 
 class ExportPDFRequest(BaseModel):

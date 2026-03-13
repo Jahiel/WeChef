@@ -1,26 +1,41 @@
-# Python
+# WeChef — .gitignore
+
+# ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
-*.sqlite3
-*.db
-
-# Environnement virtuel
+*.pyo
 .venv/
-.env
-# OS
-.DS_Store
+venv/
+*.egg-info/
+dist/
+build/
 
-# Logs
-*.log
-
-# Temp
-tmp/
-
-# Local databases
+# ── Base de données locale ───────────────────────────────────────────────
+# Ne PAS versionner la base SQLite : elle contient des données
+# persistantes locales qui NE doivent PAS être écrasées par un checkout.
 recipes.db
 .recipes.db
-*.db-wal
 *.db-shm
+*.db-wal
 
-# Generated images
+# ── Images générées ─────────────────────────────────────────────────────
+# Les images téléchargées depuis Unsplash/Picsum sont stockées localement
+# dans static/images/ — ne pas les versionner.
 static/images/
+
+# ── Secrets ────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── IDE / OS ────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/
