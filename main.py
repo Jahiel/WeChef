@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from sqlalchemy.orm import Session
 import base64
 
@@ -31,7 +33,7 @@ from schemas import (
     TagResponse,
 )
 from services.extractor import extract_recipe_with_llm, fetch_video_metadata
-from services.image_service import generate_image_for_recipe
+from services.image_service import generate_image_for_recipe, delete_image_file, IMAGES_DIR
 from urllib.parse import urlparse, urlunparse
 
 load_dotenv()
@@ -42,7 +44,11 @@ client_gemini = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="WeChef API", version="1.0.0")
 
-# CORS : restreindre aux origines légitimes en production
+# Servir les images statiques
+IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# CORS : origines configurables via .env
 _ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost,http://127.0.0.1").split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -58,7 +64,6 @@ init_db()
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _normalize_url(url: str) -> str:
-    """Supprime les paramètres de tracking de l'URL."""
     parsed = urlparse(url)
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
 
@@ -145,7 +150,7 @@ def update_recipe(recipe_id: int, body: RecipeUpdate, db: Session = Depends(get_
     if not recipe:
         raise HTTPException(status_code=404, detail="Recette non trouvée")
     update_data = body.model_dump(exclude_unset=True)
-    if "ingredients" in update_data:
+    if "ingredients" in update_data and body.ingredients is not None:
         update_data["ingredients"] = [i.model_dump() for i in body.ingredients]
     for field, value in update_data.items():
         setattr(recipe, field, value)
@@ -159,6 +164,7 @@ def delete_recipe(recipe_id: int, db: Session = Depends(get_db)) -> None:
     recipe = db.get(Recipe, recipe_id)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recette non trouvée")
+    delete_image_file(recipe.image_url)  # nettoyage fichier image
     db.delete(recipe)
     db.commit()
 
@@ -196,7 +202,7 @@ async def extract_recipe(body: ExtractRequest, db: Session = Depends(get_db)) ->
         raise HTTPException(status_code=409, detail="Recette déjà importée")
 
     try:
-        meta = fetch_video_metadata(url)
+        meta = await fetch_video_metadata(url)  # non-bloquant
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -238,6 +244,7 @@ async def regenerate_image(recipe_id: int, db: Session = Depends(get_db)) -> dic
     recipe = db.get(Recipe, recipe_id)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recette non trouvée")
+    delete_image_file(recipe.image_url)  # supprime l'ancienne image
     image_url = await generate_image_for_recipe(client_gemini, recipe.title)
     if image_url:
         recipe.image_url = image_url
@@ -253,10 +260,12 @@ async def upload_image(recipe_id: int, file: UploadFile, db: Session = Depends(g
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Image trop lourde (max 10 Mo)")
-    b64 = base64.b64encode(content).decode()
-    recipe.image_url = f"data:{file.content_type or 'image/jpeg'};base64,{b64}"
+    from services.image_service import _save_image_from_bytes
+    delete_image_file(recipe.image_url)
+    image_url = await _save_image_from_bytes(content, file.content_type or "image/jpeg")
+    recipe.image_url = image_url
     db.commit()
-    return {"message": "Image mise à jour"}
+    return {"message": "Image mise à jour", "image_url": image_url}
 
 
 # --- PDF ---------------------------------------------------------------------

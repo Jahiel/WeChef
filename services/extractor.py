@@ -1,12 +1,14 @@
 """Service d'extraction de recette depuis une URL vidéo (TikTok/Instagram).
 
-Isole toute la logique yt-dlp + Gemini pour garder main.py propre.
+yt-dlp est exécuté de façon **non-bloquante** via asyncio.create_subprocess_exec
+pour ne pas bloquer la boucle d'événements FastAPI pendant la récupération.
 """
 from __future__ import annotations
 
+import asyncio
 import json
-import subprocess
 import os
+import re
 from typing import Any
 
 from google import genai
@@ -15,18 +17,24 @@ from google.genai import types
 YT_DLP_PATH = os.getenv("YT_DLP_PATH", "/usr/bin/yt-dlp")
 
 
-def fetch_video_metadata(url: str) -> dict[str, Any]:
-    """Lance yt-dlp et retourne les métadonnées JSON de la vidéo."""
-    result = subprocess.run(
-        [YT_DLP_PATH, "--skip-download", "-j", url],
-        capture_output=True,
-        text=True,
-        timeout=30,
+async def fetch_video_metadata(url: str) -> dict[str, Any]:
+    """Lance yt-dlp de manière asynchrone et retourne les métadonnées JSON."""
+    proc = await asyncio.create_subprocess_exec(
+        YT_DLP_PATH, "--skip-download", "-j", url,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"yt-dlp error: {result.stderr[:500]}")
     try:
-        return json.loads(result.stdout)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=45)
+    except asyncio.TimeoutError as exc:
+        proc.kill()
+        raise RuntimeError("yt-dlp timeout (>45s)") from exc
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"yt-dlp error: {stderr.decode()[:500]}")
+
+    try:
+        return json.loads(stdout.decode())
     except json.JSONDecodeError as exc:
         raise RuntimeError("Métadonnées vidéo invalides (JSON malformé)") from exc
 
@@ -35,12 +43,9 @@ def parse_prep_time(raw: Any) -> int | None:
     """Convertit prep_time renvoyé par le LLM (str ou int) en entier de minutes."""
     if raw is None:
         return None
-    # Si c'est déjà un int
     if isinstance(raw, int):
         return max(raw, 0)
-    # Si c'est une chaîne comme "20 min" ou "1h30"
     s = str(raw).strip().lower()
-    import re
     # Cas "1h30" ou "1h"
     hm = re.match(r"(\d+)\s*h(?:eure)?s?\s*(\d*)\s*m?", s)
     if hm:
@@ -86,7 +91,5 @@ Titre : {video_title}
         ingredients = [{"name": i, "quantity": None, "unit": None} for i in ingredients]
         recipe_data["ingredients"] = ingredients
 
-    # Normalise prep_time
     recipe_data["prep_time"] = parse_prep_time(recipe_data.get("prep_time"))
-
     return recipe_data
