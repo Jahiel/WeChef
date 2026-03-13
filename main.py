@@ -198,12 +198,23 @@ Titre : {video_title}
     image_url = await generate_image_for_recipe(recipe_data.get("title", video_title))
 
     # Sauvegarder en DB
+    try:
+        raw_servings = recipe_data.get("servings") or 4
+        servings = max(int(str(raw_servings).strip()), 1)
+    except (ValueError, TypeError):
+        servings = 4
+    try:
+        raw_prep = recipe_data.get("prep_time") or 0
+        prep_time = int(str(raw_prep).strip()) if raw_prep else None
+    except (ValueError, TypeError):
+        prep_time = None
+
     db_recipe = Recipe(
         title=recipe_data.get("title", video_title)[:100],
         ingredients=json.dumps(ingredients, ensure_ascii=False),
         steps=json.dumps(recipe_data.get("steps", []), ensure_ascii=False),
-        servings=max(recipe_data.get("servings") or 4, 4),
-        prep_time=recipe_data.get("prep_time"),
+        servings = servings,
+        prep_time = prep_time,
         source_url=url,
         image_url=image_url,
     )
