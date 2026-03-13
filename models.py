@@ -24,6 +24,7 @@ class Recipe(Base):
     prep_time = Column(String)
     source_url = Column(String, unique=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    image_url = Column(String, nullable=True)
     
     tags = relationship("Tag", secondary=recipe_tags, back_populates="recipes")
 
