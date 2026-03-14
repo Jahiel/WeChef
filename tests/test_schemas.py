@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
+from urllib.parse import urlparse
 
 from schemas import (
     Ingredient,
@@ -165,17 +166,22 @@ class TestRecipeUpdate:
 # ── ExtractRequest ───────────────────────────────────────────────────────────
 
 class TestExtractRequest:
+    # FIX CodeQL "Incomplete URL substring sanitization" (alerts #1, #2, #3):
+    # On vérifie le hostname via urlparse().netloc plutôt qu'un `in` sur la
+    # string brute — cela prouve que le domaine est bien dans la position host
+    # et non dans un query param ou un path arbitraire.
+
     def test_valid_tiktok_url(self):
         r = ExtractRequest(url="https://www.tiktok.com/@chef/video/123456")
-        assert "tiktok.com" in r.url
+        assert urlparse(r.url).netloc.endswith("tiktok.com")
 
     def test_valid_instagram_url(self):
         r = ExtractRequest(url="https://www.instagram.com/reel/ABC123/")
-        assert "instagram.com" in r.url
+        assert urlparse(r.url).netloc.endswith("instagram.com")
 
     def test_valid_vm_tiktok_url(self):
         r = ExtractRequest(url="https://vm.tiktok.com/ZMabcdef/")
-        assert "vm.tiktok.com" in r.url
+        assert urlparse(r.url).netloc == "vm.tiktok.com"
 
     def test_youtube_url_rejected(self):
         with pytest.raises(ValidationError) as exc_info:
@@ -190,6 +196,12 @@ class TestExtractRequest:
         """Les espaces autour de l'URL doivent être supprimés."""
         r = ExtractRequest(url="  https://www.tiktok.com/@chef/video/123  ")
         assert not r.url.startswith(" ")
+
+    def test_evil_url_with_tiktok_in_query_rejected(self):
+        """Une URL malveillante avec tiktok.com en query param doit être rejetée
+        par le validator Pydantic (domaine non reconnu)."""
+        with pytest.raises(ValidationError):
+            ExtractRequest(url="https://evil.com/redirect?to=tiktok.com")
 
 
 # ── TagAddRequest ─────────────────────────────────────────────────────────────
