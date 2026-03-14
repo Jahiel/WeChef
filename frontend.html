@@ -415,6 +415,8 @@ async function loadRecipes() {
     try {
         const res = await fetch(`${API_BASE}/recipes`);
         allRecipes = await res.json();
+        // Normalise tous les IDs en Number pour éviter les comparaisons string vs number
+        allRecipes = allRecipes.map(r => ({ ...r, id: Number(r.id) }));
     } catch(e) {
         allRecipes = [];
         showStatus('Erreur chargement recettes : ' + e.message, 'error');
@@ -489,7 +491,7 @@ function makeCard(recipe) {
 
 // ── SELECTION ──
 function toggleSelect(id) {
-    const r = allRecipes.find(r => r.id === id);
+    const r = allRecipes.find(r => r.id === Number(id));
     if (r) r.selected = !r.selected;
     renderRecipes(getCurrentFiltered());
 }
@@ -578,18 +580,19 @@ async function uploadPendingImage(recipeId) {
 // ── MODAL LECTURE ──
 // FIX : fetch GET /recipes/{id} pour avoir ingredients + steps complets
 async function openRecipe(id) {
-    currentRecipeId = id;
+    currentRecipeId = Number(id); // Toujours stocker en Number
     isCreating = false;
     pendingImageFile = null;
     pendingImageUrl = null;
 
     let recipe;
     try {
-        const res = await fetch(`${API_BASE}/recipes/${id}`);
+        const res = await fetch(`${API_BASE}/recipes/${currentRecipeId}`);
         if (!res.ok) throw new Error('Recette introuvable');
         recipe = await res.json();
+        recipe.id = Number(recipe.id); // Normalise l'id retourné par l'API
         // Mettre à jour le cache local avec les données complètes
-        const idx = allRecipes.findIndex(r => r.id === id);
+        const idx = allRecipes.findIndex(r => r.id === currentRecipeId);
         if (idx !== -1) allRecipes[idx] = { ...allRecipes[idx], ...recipe };
     } catch(e) {
         showStatus('✗ Impossible d\'ouvrir la recette : ' + e.message, 'error');
@@ -668,7 +671,9 @@ function setEditMode() {
 }
 
 function enterEditMode() {
-    const recipe = allRecipes.find(r => r.id === currentRecipeId);
+    // FIX: comparaison robuste Number() vs Number() — évite le bug string vs number
+    const recipe = allRecipes.find(r => r.id === Number(currentRecipeId));
+    if (!recipe) { showStatus('✗ Recette introuvable en cache, rechargement...', 'error'); loadRecipes(); return; }
     document.getElementById('edit-title').value = recipe.title;
     document.getElementById('edit-servings').value = recipe.servings || 4;
     document.getElementById('edit-prep-time').value = recipe.prep_time || '';
@@ -681,7 +686,8 @@ function cancelEdit() {
     if (pendingImageUrl) URL.revokeObjectURL(pendingImageUrl);
     pendingImageFile = null; pendingImageUrl = null;
     if (isCreating) { closeModal(); return; }
-    const recipe = allRecipes.find(r => r.id === currentRecipeId);
+    // FIX: comparaison robuste Number() vs Number()
+    const recipe = allRecipes.find(r => r.id === Number(currentRecipeId));
     if (recipe && recipe.image_url) {
         document.getElementById('modal-image').src = recipe.image_url;
         document.getElementById('modal-image').style.display = 'block';
@@ -782,7 +788,7 @@ async function saveRecipe() {
             });
             if (!res.ok) throw new Error(await res.text());
             const created = await res.json();
-            savedId = created.id;
+            savedId = Number(created.id);
         }
 
         // Upload image après avoir l'ID (nécessaire pour Nouvelle recette aussi)
@@ -814,7 +820,7 @@ async function deleteCurrentRecipe() {
 async function promptAddTag(id) {
     const tag = prompt('Nouveau tag :');
     if (!tag || !tag.trim()) return;
-    const recipe = allRecipes.find(r => r.id === id);
+    const recipe = allRecipes.find(r => r.id === Number(id));
     const tags = [...(recipe.tags || []), tag.trim()];
     await fetch(`${API_BASE}/recipes/${id}`, {
         method: 'PUT',
