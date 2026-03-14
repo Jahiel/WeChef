@@ -23,7 +23,6 @@ from schemas import (
 # ── _parse_prep_time ─────────────────────────────────────────────────────────
 
 class TestParsePrepTime:
-    """Tests exhaustifs du helper de parsing de durée."""
 
     @pytest.mark.parametrize("raw,expected", [
         (None, None),
@@ -51,7 +50,7 @@ class TestParsePrepTime:
         assert _parse_prep_time(raw) == expected
 
     def test_negative_int_clamped_to_zero(self):
-        """_parse_prep_time clamp les entiers négatifs à 0 via max(v, 0)."""
+        """_parse_prep_time clamp les entiers negatifs a 0 via max(v, 0)."""
         assert _parse_prep_time(-5) == 0
         assert _parse_prep_time(-10) == 0
 
@@ -115,10 +114,9 @@ class TestRecipeCreate:
         assert r.prep_time is None
 
     def test_prep_time_negative_clamped_to_zero(self):
-        """_parse_prep_time (mode='before') clamp les négatifs à 0 avant Pydantic.
-        Donc prep_time=-10 devient 0, qui est valide (ge=0). Pas de ValidationError.
-        Pour rejeter les négatifs il faudrait retirer le max() dans _parse_prep_time.
-        TODO: décider si on veut rejeter ou clamper.
+        """_parse_prep_time (mode='before') clamp les negatifs a 0 avant Pydantic.
+        Donc prep_time=-10 devient 0, valide (ge=0). Pas de ValidationError.
+        TODO: decider si on veut rejeter ou clamper les valeurs negatives.
         """
         r = RecipeCreate(title="Test", prep_time=-10)
         assert r.prep_time == 0
@@ -158,12 +156,12 @@ class TestRecipeUpdate:
 
 # ── ExtractRequest ───────────────────────────────────────────────────────────
 
-# NOTE CodeQL — pas de comparaison de substring de domaine dans les assertions.
-# On vérifie uniquement que la validation Pydantic réussit/échoue.
+# NOTE CodeQL: pas de comparaison de substring de domaine dans les assertions.
+# On verifie uniquement que la validation Pydantic reussit/echoue.
 
 class TestExtractRequest:
 
-    # ─ Cas acceptés ──────────────────────────────────────────────────────────
+    # ─ Cas acceptes ──────────────────────────────────────────────────────────
 
     def test_valid_tiktok_url_accepted(self):
         r = ExtractRequest(url="https://www.tiktok.com/@chef/video/123456")
@@ -185,7 +183,7 @@ class TestExtractRequest:
         r = ExtractRequest(url="  https://www.tiktok.com/@chef/video/123  ")
         assert r.url == r.url.strip()
 
-    # ─ Cas rejetés ──────────────────────────────────────────────────────────
+    # ─ Cas rejetes ──────────────────────────────────────────────────────────
 
     def test_youtube_url_rejected(self):
         with pytest.raises(ValidationError) as exc_info:
@@ -203,15 +201,15 @@ class TestExtractRequest:
     def test_evil_tiktok_in_query_passes_current_validator(self):
         """Le validator actuel utilise `in` sur la string brute, donc une URL
         avec tiktok.com dans le query param passe la validation.
-        TODO: renforcer le validator pour vérifier le netloc uniquement.
+        TODO: renforcer le validator pour verifier le netloc uniquement.
         """
         r = ExtractRequest(url="https://evil.com/redirect?to=tiktok.com")
         assert isinstance(r.url, str)
 
     def test_evil_tiktok_subdomain_passes_current_validator(self):
-        """evil-tiktok.com contient 'tiktok.com' comme substring — passe le
-        validator actuel basé sur `in`.
-        TODO: renforcer le validator pour vérifier le netloc uniquement.
+        """evil-tiktok.com contient 'tiktok.com' comme substring, passe le
+        validator actuel base sur `in`.
+        TODO: renforcer le validator pour verifier le netloc uniquement.
         """
         r = ExtractRequest(url="https://evil-tiktok.com/video/123")
         assert isinstance(r.url, str)

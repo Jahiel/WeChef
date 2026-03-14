@@ -50,7 +50,7 @@ class TestFilterByTag:
         assert resp.json() == []
 
 
-# ── Tags déduplication ────────────────────────────────────────────────────────
+# ── Tags deduplication ────────────────────────────────────────────────────────
 
 class TestTagDedup:
     def test_same_tag_added_twice_no_duplicate(self, client):
@@ -71,13 +71,11 @@ class TestTagDedup:
 
 class TestUploadImage:
     def test_upload_image_updates_recipe(self, client):
-        """POST /recipes/{id}/image doit mettre à jour image_url."""
         r = client.post("/recipes", json={"title": "Gâteau", "ingredients": [], "steps": []}).json()
         recipe_id = r["id"]
         fake_image = io.BytesIO(b"fake-image-bytes")
 
-        # La fonction est importée DANS l'endpoint depuis services.image_service,
-        # donc le bon chemin de patch est services.image_service._save_image_from_bytes
+        # Patch sur le module source, pas sur main (import local dans l'endpoint)
         with patch("services.image_service._save_image_from_bytes", new_callable=AsyncMock) as mock_save:
             mock_save.return_value = "/static/images/test.jpg"
             resp = client.post(
@@ -99,7 +97,6 @@ class TestUploadImage:
         assert resp.status_code == 404
 
     def test_upload_image_too_large(self, client):
-        """Image > 10 Mo doit retourner 413."""
         r = client.post("/recipes", json={"title": "Trop gros", "ingredients": [], "steps": []}).json()
         big_file = io.BytesIO(b"x" * (10 * 1024 * 1024 + 1))
         resp = client.post(
