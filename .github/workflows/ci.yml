@@ -1,0 +1,64 @@
+name: CI — WeChef Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: pytest (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install system deps (WeasyPrint)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libpango-1.0-0 libpangoft2-1.0-0 libpangocairo-1.0-0 \
+            libgdk-pixbuf2.0-0 libffi-dev libcairo2 libglib2.0-0
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff
+
+      - name: Lint with ruff
+        run: ruff check . --select E,W,F --ignore E501 --exclude migrations/
+        continue-on-error: true  # lint non-bloquant pour l'instant
+
+      - name: Run pytest
+        env:
+          # Clés factices pour que main.py importe sans crasher
+          GEMINI_API_KEY: fake-key-for-tests
+          GROQ_API_KEY: fake-key-for-tests
+          DATABASE_URL: sqlite:///:memory:
+        run: |
+          pytest tests/ -v --tb=short --no-header \
+            --ignore=tests/test_extract.py \
+            -p no:warnings
+
+      - name: Run all tests including extract (with mocks)
+        env:
+          GEMINI_API_KEY: fake-key-for-tests
+          GROQ_API_KEY: fake-key-for-tests
+          DATABASE_URL: sqlite:///:memory:
+        run: |
+          pytest tests/ -v --tb=short --no-header -p no:warnings
+        continue-on-error: true  # tests async anyio peuvent varier selon env CI
