@@ -1,4 +1,4 @@
-name: CI — WeChef Tests
+name: CI - WeChef Tests
 
 on:
   push:
@@ -41,24 +41,12 @@ jobs:
 
       - name: Lint with ruff
         run: ruff check . --select E,W,F --ignore E501 --exclude migrations/
-        continue-on-error: true  # lint non-bloquant pour l'instant
+        continue-on-error: true
 
-      - name: Run pytest
-        env:
-          # Clés factices pour que main.py importe sans crasher
-          GEMINI_API_KEY: fake-key-for-tests
-          GROQ_API_KEY: fake-key-for-tests
-          DATABASE_URL: sqlite:///:memory:
-        run: |
-          pytest tests/ -v --tb=short --no-header \
-            --ignore=tests/test_extract.py \
-            -p no:warnings
-
-      - name: Run all tests including extract (with mocks)
+      - name: Run tests
         env:
           GEMINI_API_KEY: fake-key-for-tests
           GROQ_API_KEY: fake-key-for-tests
           DATABASE_URL: sqlite:///:memory:
         run: |
           pytest tests/ -v --tb=short --no-header -p no:warnings
-        continue-on-error: true  # tests async anyio peuvent varier selon env CI
