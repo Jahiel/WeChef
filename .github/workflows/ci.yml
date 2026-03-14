@@ -45,8 +45,8 @@ jobs:
 
       - name: Run tests
         env:
-          GEMINI_API_KEY: fake-key-for-tests
-          GROQ_API_KEY: fake-key-for-tests
-          DATABASE_URL: sqlite:///:memory:
+          GEMINI_API_KEY: "fake-key-for-tests"
+          GROQ_API_KEY: "fake-key-for-tests"
+          DATABASE_URL: "sqlite:///:memory:"
         run: |
           pytest tests/ -v --tb=short --no-header -p no:warnings
